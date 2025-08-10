@@ -29,19 +29,39 @@ jobs:
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      # 缓存 cargo（加速重复构建）
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Verify toolchains
+        run: |
+          node -v
+          rustc -V
+          cargo -V
+
       - name: Clean npm cache
         run: npm cache clean --force
 
-      # 安装依赖（包含 optional），确保拿到可选二进制；不依赖的话后面也会从源码构建
+      # 安装依赖（包含 optional）
       - name: Install dependencies (include optional)
         run: npm ci --include=optional
 
-      # 关键：从源码重建 lightningcss（如未下载到预编译二进制则编译生成）
+      # 关键：从源码重建 lightningcss
       - name: Rebuild lightningcss from source
         env:
           npm_config_build_from_source: true
           npm_config_unsafe_perm: true
-        run: npm rebuild lightningcss --build-from-source --force
+        run: |
+          npm rebuild lightningcss --build-from-source --force
+          ls -al node_modules/lightningcss/node || true
 
       - name: Build Next.js app
         env:
@@ -69,6 +89,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     needs: build
+
     steps:
       - name: Download artifact
         uses: actions/download-artifact@v4
