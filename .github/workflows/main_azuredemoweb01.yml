@@ -28,24 +28,27 @@ jobs:
       - name: Clean npm cache
         run: npm cache clean --force
 
-      # 安装包含 optional 的依赖，避免 lightningcss 缺二进制
+      # 安装依赖（包含 optional），避免缺少 lightningcss 原生依赖
       - name: Install dependencies (include optional)
         run: npm ci --include=optional
 
-      # 强制重建 lightningcss 原生模块（容错）
-      - name: Rebuild lightningcss
-        run: npm rebuild lightningcss --force || true
+      # 关键：从源码重建 lightningcss，确保 Linux Runner 上可用
+      - name: Rebuild lightningcss from source
+        env:
+          npm_config_build_from_source: true
+          npm_config_unsafe_perm: true
+        run: npm rebuild lightningcss --build-from-source --force || true
 
       - name: Build Next.js app
         env:
           NODE_OPTIONS: --max_old_space_size=4096
         run: npm run build
 
-      # 构建完成后裁掉 dev 依赖，减小部署体积
+      # 构建后裁掉 dev 依赖，减小部署体积
       - name: Prune dev dependencies
         run: npm prune --omit=dev
 
-      # 打包成 zip（保留 node_modules/.next）
+      # 打包（保留 node_modules/.next）
       - name: Zip artifact (with node_modules)
         run: |
           zip -r app.zip . \
@@ -75,4 +78,5 @@ jobs:
           app-name: 'azuredemoweb01'
           slot-name: 'production'
           package: 'app.zip'
+          # 如果你在 Secrets 中的名字不同，请改成对应名称
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_A77B9AB3A0B44B10AD979B6804554E26 }}
