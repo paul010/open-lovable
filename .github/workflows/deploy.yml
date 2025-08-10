@@ -1,0 +1,48 @@
+name: Deploy open-lovable to Azure Web App (prebuilt)
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      # 先安装全部依赖，确保 build 阶段不缺包
+      - name: Install deps
+        run: npm ci
+
+      - name: Build
+        env:
+          NODE_OPTIONS: --max_old_space_size=4096
+        run: npm run build
+
+      # 构建完成后裁掉 dev 依赖，减小包体（运行时只保留 prod 依赖）
+      - name: Prune dev deps
+        run: npm prune --omit=dev
+
+      # 打包时 **保留 node_modules**（关键）
+      - name: Zip artifact (with node_modules)
+        run: |
+          zip -r app.zip . \
+            -x ".git/*" ".github/*" "tests/*" \
+               "**/.vscode/*" "**/.DS_Store"
+
+      - name: Deploy
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: "az204demo25"                    # 你的 Web App 名称
+          slot-name: "production"
+          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE }}
+          package: "app.zip"
