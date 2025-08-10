@@ -25,26 +25,30 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
+      # 安装 Rust（lightningcss 源码构建必需）
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
       - name: Clean npm cache
         run: npm cache clean --force
 
-      # 安装依赖（包含 optional），避免缺少 lightningcss 原生依赖
+      # 安装依赖（包含 optional），确保拿到可选二进制；不依赖的话后面也会从源码构建
       - name: Install dependencies (include optional)
         run: npm ci --include=optional
 
-      # 关键：从源码重建 lightningcss，确保 Linux Runner 上可用
+      # 关键：从源码重建 lightningcss（如未下载到预编译二进制则编译生成）
       - name: Rebuild lightningcss from source
         env:
           npm_config_build_from_source: true
           npm_config_unsafe_perm: true
-        run: npm rebuild lightningcss --build-from-source --force || true
+        run: npm rebuild lightningcss --build-from-source --force
 
       - name: Build Next.js app
         env:
           NODE_OPTIONS: --max_old_space_size=4096
         run: npm run build
 
-      # 构建后裁掉 dev 依赖，减小部署体积
+      # 构建后裁掉 dev 依赖，减小包体
       - name: Prune dev dependencies
         run: npm prune --omit=dev
 
@@ -55,7 +59,7 @@ jobs:
             -x ".git/*" ".github/*" "tests/*" \
                "**/.vscode/*" "**/.DS_Store"
 
-      - name: Upload artifact for deployment job
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: prebuilt-zip
@@ -65,9 +69,8 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     needs: build
-
     steps:
-      - name: Download artifact from build job
+      - name: Download artifact
         uses: actions/download-artifact@v4
         with:
           name: prebuilt-zip
@@ -78,5 +81,4 @@ jobs:
           app-name: 'azuredemoweb01'
           slot-name: 'production'
           package: 'app.zip'
-          # 如果你在 Secrets 中的名字不同，请改成对应名称
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_A77B9AB3A0B44B10AD979B6804554E26 }}
