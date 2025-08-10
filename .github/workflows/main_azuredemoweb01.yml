@@ -1,4 +1,4 @@
-name: Build and deploy Node.js app to Azure Web App - azuredemoweb01
+name: Dev run on Azure Web App - azuredemoweb01 (no build)
 
 on:
   push:
@@ -6,15 +6,12 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: deploy-${{ github.ref }}
+  group: devdeploy-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  build:
+  deploy-dev:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -25,76 +22,16 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
-      # 安装 Rust（lightningcss 源码构建必需）
-      - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      # 缓存 cargo（加速重复构建）
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
-
-      - name: Verify toolchains
-        run: |
-          node -v
-          rustc -V
-          cargo -V
-
-      - name: Clean npm cache
-        run: npm cache clean --force
-
-      # 安装依赖（包含 optional）
-      - name: Install dependencies (include optional)
+      # 仅安装依赖，不做构建；包含 optional 以避免少依赖
+      - name: Install deps (include optional)
         run: npm ci --include=optional
 
-      # 关键：从源码重建 lightningcss
-      - name: Rebuild lightningcss from source
-        env:
-          npm_config_build_from_source: true
-          npm_config_unsafe_perm: true
-        run: |
-          npm rebuild lightningcss --build-from-source --force
-          ls -al node_modules/lightningcss/node || true
-
-      - name: Build Next.js app
-        env:
-          NODE_OPTIONS: --max_old_space_size=4096
-        run: npm run build
-
-      # 构建后裁掉 dev 依赖，减小包体
-      - name: Prune dev dependencies
-        run: npm prune --omit=dev
-
-      # 打包（保留 node_modules/.next）
-      - name: Zip artifact (with node_modules)
+      # 打包源码 + node_modules（保留 .env* 自行斟酌）
+      - name: Zip app (with node_modules, no build)
         run: |
           zip -r app.zip . \
             -x ".git/*" ".github/*" "tests/*" \
                "**/.vscode/*" "**/.DS_Store"
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: prebuilt-zip
-          path: app.zip
-          retention-days: 7
-
-  deploy:
-    runs-on: ubuntu-latest
-    needs: build
-
-    steps:
-      - name: Download artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: prebuilt-zip
 
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
